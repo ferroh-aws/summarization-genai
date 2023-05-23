@@ -15,6 +15,12 @@ let ssmClient: SSMClient = new SSMClient({});
 let getName = (key: string): string => { return key.includes('/') ? key.substring(key.lastIndexOf('/') + 1) : key }
 let endpointName: string|undefined = undefined;
 
+/**
+ * Lambda handler invoked each time an object is created in the transcripts bucket.
+ *
+ * @param event The event containing the records of the new objects.
+ * @param _ The execution context of the lambda, this is not used.
+ */
 exports.lambdaHandler = async (event: S3Event, _: Context): Promise<void> => {
   if (endpointName == undefined) {
     const resp = await ssmClient.send(new GetParameterCommand({
@@ -41,6 +47,12 @@ exports.lambdaHandler = async (event: S3Event, _: Context): Promise<void> => {
   }
 }
 
+/**
+ * Divides the entire text in chunks bellow the maximum tokens accepted by the model. In this function we use the
+ * natural library to tokenize the text in sentences and try to keep coherence in the chunks.
+ *
+ * @param text The text to divide in chunks.
+ */
 let prepareChunks = (text: string): Array<string> => {
   let chunks = new Array<string>();
   let tokenizer = new natural.SentenceTokenizer();
@@ -62,6 +74,11 @@ let prepareChunks = (text: string): Array<string> => {
   return chunks;
 }
 
+/**
+ * Generates the summary of the document with the previously generated chunks.
+ *
+ * @param chunks Chunks of the document not exceeding the maximum tokens.
+ */
 let generateSummary = async (chunks: Array<string>): Promise<string> => {
   const encoder = new TextEncoder();
   const decoder = new TextDecoder();
