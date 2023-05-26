@@ -1,6 +1,9 @@
 import { S3Event, Context } from 'aws-lambda';
 import { GetObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
-import { InvokeEndpointCommand, SageMakerRuntimeClient } from '@aws-sdk/client-sagemaker-runtime';
+import {
+  InvokeEndpointCommand,
+  SageMakerRuntimeClient
+} from '@aws-sdk/client-sagemaker-runtime';
 import { GetParameterCommand, SSMClient } from '@aws-sdk/client-ssm';
 import * as natural from 'natural';
 
@@ -22,6 +25,7 @@ let endpointName: string|undefined = undefined;
  * @param _ The execution context of the lambda, this is not used.
  */
 exports.lambdaHandler = async (event: S3Event, _: Context): Promise<void> => {
+  console.log(`Starting summarization process.`);
   if (endpointName == undefined) {
     const resp = await ssmClient.send(new GetParameterCommand({
       Name: ParameterName
@@ -55,24 +59,55 @@ exports.lambdaHandler = async (event: S3Event, _: Context): Promise<void> => {
  */
 let prepareChunks = (text: string): Array<string> => {
   let chunks = new Array<string>();
-  let tokenizer = new natural.SentenceTokenizer();
-  let sentences = tokenizer.tokenize(text);
+  let sentenceTokenizer = new natural.SentenceTokenizerNew();
+  let wordTokenizer = new natural.WordPunctTokenizer();
+  let sentences = sentenceTokenizer.tokenize(text);
   let chunk = '';
   let length = 0;
   for (let sentence of sentences) {
-    let combineLength = length + sentence.length;
-    if (combineLength <= MaxTokens) {
+    let combineLength = length + wordTokenizer.tokenize(sentence)!.length;
+    if (combineLength < MaxTokens) {
       length = combineLength;
       chunk += sentence + ' ';
     } else {
       chunks.push(chunk);
       chunk = sentence + ' ';
-      length = chunk.length;
+      length = wordTokenizer.tokenize(chunk)!.length;
     }
   }
+  for (const chunk of chunks) {
+    console.log(`Chunk tokens: ${wordTokenizer.tokenize(chunk)!.length}`)
+    console.log(chunk);
+  }
   chunks.push(chunk);
+  console.log(`Total chunks: ${chunks.length}`);
   return chunks;
 }
+/*
+const splitText = (text: string): Array<string> => {
+  const chunks = new Array<string>();
+  const sentenceTokenizer = new natural.SentenceTokenizerNew();
+  const wordTokenizer = new natural.WordPunctTokenizer();
+  let sentences = sentenceTokenizer.tokenize(text);
+  let prevSentence = '';
+  let chunk = '';
+  let length = 0;
+  for (const sentence of sentences) {
+    let combineLength = length + wordTokenizer.tokenize(sentence)!.length;
+    if (combineLength < MaxTokens) {
+      length = combineLength;
+      chunk += sentence + ' ';
+    } else {
+      console.log(`Chunk tokens: ${wordTokenizer.tokenize(chunk)!.length}`)
+      console.log(chunk);
+      chunks.push(chunk);
+      chunk = prevSentence + ' ' + sentence + ' ';
+      length = wordTokenizer.tokenize(chunk)!.length;
+    }
+    prevSentence = sentence;
+  }
+  return chunks;
+}*/
 
 /**
  * Generates the summary of the document with the previously generated chunks.
@@ -87,13 +122,13 @@ let generateSummary = async (chunks: Array<string>): Promise<string> => {
     const data = {
       'inputs': chunk
     };
-    const smResponse = await sageMakerClient.send(new InvokeEndpointCommand({
-      Accept: 'application/json',
-      Body: encoder.encode(JSON.stringify(data)),
-      ContentType: 'application/json',
-      EndpointName: endpointName
-    }));
-    const inference = JSON.parse(decoder.decode(smResponse.Body));
+    const response = await sageMakerClient.send(new InvokeEndpointCommand({
+        Accept: 'application/json',
+        Body: encoder.encode(JSON.stringify(data)),
+        ContentType: 'application/json',
+        EndpointName: endpointName
+      }));
+    const inference = JSON.parse(decoder.decode(response.Body));
     summaries.push(inference[0]['generated_text']);
   }
   return summaries.join(' ');

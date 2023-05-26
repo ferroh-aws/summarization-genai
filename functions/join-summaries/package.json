@@ -1,5 +1,5 @@
 {
-  "name": "summarize",
+  "name": "join-summaries",
   "version": "0.1.0",
   "scripts": {
     "build": "tsc",
@@ -17,8 +17,6 @@
   },
   "dependencies": {
     "@aws-sdk/client-s3": "3.338.0",
-    "@aws-sdk/client-sagemaker-runtime": "3.338.0",
-    "@aws-sdk/client-ssm": "3.338.0",
     "constructs": "^10.0.0",
     "natural": "6.3.0",
     "source-map-support": "^0.5.21"
