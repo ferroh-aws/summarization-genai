@@ -285,7 +285,7 @@ export class SummarizationGenaiStack extends cdk.Stack {
 
     const stateMachine = new StateMachine(this, 'summarization-state-machine', {
       definition: definition,
-      timeout: cdk.Duration.minutes(5),
+      timeout: cdk.Duration.minutes(30),
       role: stepFunctionsRole
     });
 

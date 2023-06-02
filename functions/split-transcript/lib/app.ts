@@ -117,9 +117,9 @@ const putChunks = async (bucket: string, name: string, chunks: Array<string>): P
   const promises = new Array<Promise<PutObjectCommandOutput>>();
   const keys = new Array<string>();
   const expires = new Date(new Date().getTime() + Expiration * 60000);
-  let count = 1;
+  let count = 0;
   for (const chunk of chunks) {
-    const key = `${ChunkPrefix}${count.toLocaleString('en-US', {minimumSignificantDigits: 2})}-${name}`;
+    const key = `${ChunkPrefix}${(++count).toLocaleString('en-US', {minimumIntegerDigits: 2})}-${name}`;
     promises.push(
       s3Client.send(new PutObjectCommand({
         Body: chunk,
