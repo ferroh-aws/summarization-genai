@@ -2,6 +2,7 @@ import * as cdk from 'aws-cdk-lib';
 import { RemovalPolicy } from 'aws-cdk-lib';
 import { Construct } from 'constructs';
 import { Effect, ManagedPolicy, PolicyDocument, PolicyStatement, Role, ServicePrincipal } from 'aws-cdk-lib/aws-iam';
+import { Key } from 'aws-cdk-lib/aws-kms';
 import { Architecture } from 'aws-cdk-lib/aws-lambda';
 import { S3EventSource, SqsEventSource } from 'aws-cdk-lib/aws-lambda-event-sources';
 import { NodejsFunction } from 'aws-cdk-lib/aws-lambda-nodejs';
@@ -23,10 +24,15 @@ export class SummarizationGenaiStack extends cdk.Stack {
       queueName: 'transcripts-queue'
     });
 
+    const key = new Key(this, 'transcripts-bucket-key', {
+      description: 'KMS key for S3 bucket encryption.'
+    });
+
     const transcriptsBucket = new Bucket(this, 'transcripts-bucket', {
       accessControl: BucketAccessControl.PRIVATE,
       bucketName: 'transcripts-bucket-' + cdk.Aws.ACCOUNT_ID,
-      encryption: BucketEncryption.S3_MANAGED,
+      encryption: BucketEncryption.KMS,
+      encryptionKey: key,
       removalPolicy: RemovalPolicy.DESTROY
     });
     transcriptsBucket.addEventNotification(EventType.OBJECT_CREATED, new SqsDestination(queue), {
@@ -71,6 +77,7 @@ export class SummarizationGenaiStack extends cdk.Stack {
         ManagedPolicy.fromAwsManagedPolicyName('service-role/AWSLambdaBasicExecutionRole')
       ]
     });
+    key.grantEncryptDecrypt(processChunkRole);
 
     const joinSummaryRole = new Role(this, 'join-summary-role', {
       assumedBy: new ServicePrincipal('lambda.amazonaws.com'),
@@ -94,6 +101,7 @@ export class SummarizationGenaiStack extends cdk.Stack {
         ManagedPolicy.fromAwsManagedPolicyName('service-role/AWSLambdaBasicExecutionRole')
       ]
     });
+    key.grantEncryptDecrypt(joinSummaryRole);
 
     const summarizationRole = new Role(this, 'summarization-role', {
       assumedBy: new ServicePrincipal('lambda.amazonaws.com'),
@@ -337,6 +345,7 @@ export class SummarizationGenaiStack extends cdk.Stack {
         ManagedPolicy.fromAwsManagedPolicyName('service-role/AWSLambdaBasicExecutionRole')
       ]
     });
+    key.grantEncryptDecrypt(splitRole);
 
     const splitFunction = new NodejsFunction(this, 'split-transcript-function', {
       architecture: Architecture.X86_64,
