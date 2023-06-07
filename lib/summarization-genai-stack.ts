@@ -7,7 +7,7 @@ import { Architecture } from 'aws-cdk-lib/aws-lambda';
 import { S3EventSource, SqsEventSource } from 'aws-cdk-lib/aws-lambda-event-sources';
 import { NodejsFunction } from 'aws-cdk-lib/aws-lambda-nodejs';
 import { Bucket, BucketAccessControl, BucketEncryption, EventType } from 'aws-cdk-lib/aws-s3';
-import { SqsDestination } from 'aws-cdk-lib/aws-s3-notifications';
+import { LambdaDestination, SqsDestination } from 'aws-cdk-lib/aws-s3-notifications';
 import { Choice, Condition, CustomState, StateMachine } from 'aws-cdk-lib/aws-stepfunctions';
 import * as tasks from 'aws-cdk-lib/aws-stepfunctions-tasks';
 import { Queue, QueueEncryption } from 'aws-cdk-lib/aws-sqs';
@@ -41,6 +41,60 @@ export class SummarizationGenaiStack extends cdk.Stack {
 
     const endpointParam = StringParameter.fromStringParameterName(this, 'summarization-endpoint',
       'summarization_endpoint');
+
+    //transcribe role with action that allows transcribe:StartTranscriptionJob
+    const transcribeRole = new Role(this, 'TranscribeFunctionRole', {
+      assumedBy: new ServicePrincipal('transcribe.amazonaws.com'),
+      inlinePolicies: {
+        'TranscribePolicy': new PolicyDocument({
+          statements: [
+            new PolicyStatement({
+              effect: Effect.ALLOW,
+              actions: [
+                's3:GetObject',
+                's3:PutObject',
+                'transcribe:StartTranscriptionJob',
+                'transcribe:GetTranscriptionJob',
+                'transcribe:ListTranscriptionJobs'
+              ]
+              ,
+              resources: [transcriptsBucket.bucketArn, transcriptsBucket.arnForObjects('*')]
+            })
+          ]
+        })
+      }
+    });
+    key.grantEncryptDecrypt(transcribeRole);
+
+    //lambda role with action that allows transcribe:StartTranscriptionJob
+    const lambdaRole = new Role(this, 'TranscriptionFunctionRole', {
+      assumedBy: new ServicePrincipal('lambda.amazonaws.com'),
+      inlinePolicies: {
+        'TranscribePolicy': new PolicyDocument({
+          statements: [
+            new PolicyStatement({
+              effect: Effect.ALLOW,
+              actions: [
+                'transcribe:StartTranscriptionJob',
+                'transcribe:GetTranscriptionJob',
+                'transcribe:ListTranscriptionJobs'
+              ],
+              resources: ['*']
+            }),
+            new PolicyStatement({
+              effect: Effect.ALLOW,
+              actions: [
+                'iam:PassRole'
+              ],
+              resources: [transcribeRole.roleArn]
+            })
+          ]
+        })
+      },
+      managedPolicies: [
+        ManagedPolicy.fromAwsManagedPolicyName('service-role/AWSLambdaBasicExecutionRole')
+      ]
+    });
 
     const processChunkRole = new Role(this, 'process-chunk-role', {
       assumedBy: new ServicePrincipal('lambda.amazonaws.com'),
@@ -151,6 +205,72 @@ export class SummarizationGenaiStack extends cdk.Stack {
         ManagedPolicy.fromAwsManagedPolicyName('service-role/AWSLambdaBasicExecutionRole')
       ]
     });
+
+    const lambdaFunction = new NodejsFunction(this, 'TranscriptionFunction', {
+      architecture: Architecture.X86_64,
+      bundling: {
+        forceDockerBundling: true,
+        minify: true,
+        sourceMap: true,
+        sourcesContent: true,
+        target: 'es2020'
+      },
+      entry: 'functions/transcription/lib/app.ts',
+      functionName: 'TranscriptionFunction',
+      handler: 'index.handler',
+      environment: {
+        ROLE_ARN: transcribeRole.roleArn
+      },
+      timeout: cdk.Duration.seconds(840), //14 minutesl
+      role: lambdaRole
+    });
+    transcriptsBucket.addEventNotification(EventType.OBJECT_CREATED, new LambdaDestination(lambdaFunction), {
+      prefix: 'audio/',
+      suffix: '.wav'
+    });
+    transcriptsBucket.grantReadWrite(lambdaRole);
+
+    const vttRole = new Role(this, 'VTTFunctionRole', {
+      assumedBy: new ServicePrincipal('lambda.amazonaws.com'),
+      inlinePolicies: {
+        'TranscribePolicy': new PolicyDocument({
+          statements: [
+            new PolicyStatement({
+              effect: Effect.ALLOW,
+              actions: [
+                's3:GetObject',
+                's3:PutObject'
+              ],
+              resources: [transcriptsBucket.bucketArn, transcriptsBucket.arnForObjects('*')]
+            })
+          ]
+        })
+      },
+      managedPolicies: [
+        ManagedPolicy.fromAwsManagedPolicyName('service-role/AWSLambdaBasicExecutionRole')
+      ]
+    });
+    key.grantEncryptDecrypt(vttRole);
+
+    const vttParserFunction = new NodejsFunction(this, 'VTTFunction', {
+      architecture: Architecture.X86_64,
+      bundling: {
+        forceDockerBundling: true,
+        minify: true,
+        sourceMap: true,
+        sourcesContent: true,
+        target: 'es2020'
+      },
+      entry: 'functions/parser_vtt/lib/app.ts',
+      handler: 'index.handler',
+      timeout: cdk.Duration.seconds(840), //14 minutesl
+      role: vttRole,
+    });
+    transcriptsBucket.addEventNotification(EventType.OBJECT_CREATED, new LambdaDestination(vttParserFunction), {
+      prefix: 'transcribe-jobs/',
+      suffix: '.json'
+    });
+    transcriptsBucket.grantReadWrite(vttRole);
 
     const processChunkFunction = new NodejsFunction(this, 'process-chunk-function', {
       architecture: Architecture.X86_64,
