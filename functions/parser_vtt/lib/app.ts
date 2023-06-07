@@ -48,7 +48,7 @@ function formatData(data: any) {
       //@ts-ignore
     ).flatMap(item => item.alternatives.map(alt => alt.content));
 
-    return `${i+1} "${speaker}"\n${str_start_time} --> ${str_end_time}\n${words.join(' ')}\n`;
+    return `${speaker}: ${words.join(' ')}\n`;
   });
 
   return formatted.join('\n');
