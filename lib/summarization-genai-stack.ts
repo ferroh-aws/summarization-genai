@@ -38,6 +38,11 @@ export class SummarizationGenaiStack extends cdk.Stack {
     transcriptsBucket.addEventNotification(EventType.OBJECT_CREATED, new SqsDestination(queue), {
       prefix: 'transcripts/'
     });
+    transcriptsBucket.addLifecycleRule({
+      enabled: true,
+      expiration: cdk.Duration.days(1),
+      prefix: 'chunks/'
+    });
 
     const endpointParam = StringParameter.fromStringParameterName(this, 'summarization-endpoint',
       'summarization_endpoint');
@@ -285,7 +290,7 @@ export class SummarizationGenaiStack extends cdk.Stack {
       functionName: 'process-chunk-function',
       entry: 'functions/process-chunk/lib/app.ts',
       environment: {
-        'OUTPUT_PREFIX': 'summaries/'
+        'OUTPUT_PREFIX': 'chunks/'
       },
       handler: 'lambdaHandler',
       memorySize: 128,

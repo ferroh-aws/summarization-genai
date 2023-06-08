@@ -42,7 +42,7 @@ exports.lambdaHandler = async (event: SummaryEvent, _: Context): Promise<Summary
   if (event.summary?.Body) {
     const body = JSON.parse(event.summary.Body);
     const key = `${OutputPrefix}${event.current.toLocaleString(
-      'en-US', {minimumIntegerDigits: 2})}-${event.name}`;
+      'en-US', {minimumIntegerDigits: 2})}-sum-${event.name}`;
     event.summaryKeys.push(key);
     await s3Client.send(new PutObjectCommand({
       Body: body[0]['generated_text'],
