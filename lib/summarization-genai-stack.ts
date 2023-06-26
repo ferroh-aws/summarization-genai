@@ -13,15 +13,14 @@ import * as tasks from 'aws-cdk-lib/aws-stepfunctions-tasks';
 import { Queue, QueueEncryption } from 'aws-cdk-lib/aws-sqs';
 import { StringParameter } from 'aws-cdk-lib/aws-ssm';
 
-// import * as sqs from 'aws-cdk-lib/aws-sqs';
-
 export class SummarizationGenaiStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props?: cdk.StackProps) {
     super(scope, id, props);
 
     const queue = new Queue(this, 'transcriptions-queue', {
       encryption: QueueEncryption.SQS_MANAGED,
-      queueName: 'transcripts-queue'
+      queueName: 'transcripts-queue',
+      visibilityTimeout: cdk.Duration.minutes(1)
     });
 
     const key = new Key(this, 'transcripts-bucket-key', {
@@ -61,8 +60,7 @@ export class SummarizationGenaiStack extends cdk.Stack {
                 'transcribe:StartTranscriptionJob',
                 'transcribe:GetTranscriptionJob',
                 'transcribe:ListTranscriptionJobs'
-              ]
-              ,
+              ],
               resources: [transcriptsBucket.bucketArn, transcriptsBucket.arnForObjects('*')]
             })
           ]
